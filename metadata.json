@@ -1,0 +1,9 @@
+{
+  "name": "Venus AI - 0.8 ",
+  "description": "Next-gen Multi-Agent Image/Video Orchestrator featuring LGN Post-Production and Kinetic DNA Preservation. NEXT.JS",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera",
+    "microphone"
+  ]
+}
