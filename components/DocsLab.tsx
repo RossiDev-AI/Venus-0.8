@@ -54,7 +54,7 @@ const DocsLab: React.FC = () => {
               <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Advanced Tip: DNA Locking</h4>
            </div>
            <p className="text-sm text-zinc-400 leading-relaxed uppercase">
-             To achieve perfect character consistency, generate a 'Base Character' in the Creation Hub, save it to your Vault, and then use it as the PEP node in the Fusion Reactor. Set Z_ANATOMY to > 1.2 for strict identity preservation.
+             To achieve perfect character consistency, generate a 'Base Character' in the Creation Hub, save it to your Vault, and then use it as the PEP node in the Fusion Reactor. Set Z_ANATOMY to &gt; 1.2 for strict identity preservation.
            </p>
         </div>
 

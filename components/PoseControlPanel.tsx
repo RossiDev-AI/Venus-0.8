@@ -1,12 +1,9 @@
 
+"use client";
+
 import React, { useRef, useState, useEffect } from 'react';
 import { PoseData, VaultItem, AppSettings } from '../types';
 import { extractDeepDNA } from '../geminiService';
-import { env, pipeline } from '@xenova/transformers';
-
-// Setup Transformers env
-env.allowLocalModels = false;
-env.useBrowserCache = true;
 
 interface PoseControlPanelProps {
   poseControl?: PoseData;
@@ -29,10 +26,22 @@ const PoseControlPanel: React.FC<PoseControlPanelProps> = ({
   const [poseInstance, setPoseInstance] = useState<any>(null);
   const [viewMode, setViewMode] = useState<'SKELETON' | 'ORIGINAL' | 'SEMANTIC'>('SKELETON');
   const [segmenter, setSegmenter] = useState<any>(null);
+  const [transformers, setTransformers] = useState<any>(null);
+
+  // Dynamically import Transformers.js on client side
+  useEffect(() => {
+    const loadTransformers = async () => {
+      const trans = await import('@xenova/transformers');
+      trans.env.allowLocalModels = false;
+      trans.env.useBrowserCache = true;
+      setTransformers(trans);
+    };
+    loadTransformers();
+  }, []);
 
   // Initialize MediaPipe Pose
   useEffect(() => {
-    if (typeof Pose !== 'undefined' && !poseInstance) {
+    if (typeof window !== 'undefined' && typeof Pose !== 'undefined' && !poseInstance) {
       const p = new Pose({
         locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`
       });
@@ -41,18 +50,20 @@ const PoseControlPanel: React.FC<PoseControlPanelProps> = ({
     }
   }, [poseInstance]);
 
-  // Initialize Transformers Segmenter
+  // Initialize Transformers Segmenter after the library is loaded
   useEffect(() => {
     const loadSegmenter = async () => {
+      if (transformers) {
         try {
-            const model = await pipeline('image-segmentation', 'Xenova/segformer-b0-finetuned-ade-512-512');
-            setSegmenter(() => model);
+          const model = await transformers.pipeline('image-segmentation', 'Xenova/segformer-b0-finetuned-ade-512-512');
+          setSegmenter(() => model);
         } catch (e) {
-            console.warn("Transformers load failed, falling back to heuristic", e);
+          console.warn("Transformers load failed, falling back to heuristic", e);
         }
+      }
     };
     loadSegmenter();
-  }, []);
+  }, [transformers]);
 
   // --- IMAGE PROCESSING UTILS ---
 
@@ -241,7 +252,7 @@ const PoseControlPanel: React.FC<PoseControlPanelProps> = ({
     if (poseControl && poseControl.imageUrl && !poseControl.skeletonImage && !isExtracting) {
         processSkeleton(poseControl);
     }
-  }, [poseControl]);
+  }, [poseControl, poseInstance]);
 
   const handleExecute = async () => {
       if (!onExecuteSurgical) return;

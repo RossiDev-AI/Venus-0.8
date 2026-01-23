@@ -1,4 +1,4 @@
-
+"use client";
 import React, { useState, useRef, useEffect } from 'react';
 import { TimelineBeat, CinemaProject, AgentStatus, VaultItem, SubtitleSettings, AppSettings } from '../../types';
 import { scriptToTimeline, scoutMediaForBeat, generateImageForBeat, matchVaultForBeat, getGlobalVisualPrompt } from '../../geminiService';
@@ -142,6 +142,15 @@ const CinemaLab: React.FC<CinemaLabProps> = (props) => {
     finally { setLoadingBeats(prev => ({ ...prev, [beat.id]: false })); }
   };
 
+  const handleBatchGenerate = async (mode: 'SCOUT' | 'AI') => {
+    setIsGenerating(true);
+    for (let i = 0; i < props.project.beats.length; i++) {
+      if (props.project.beats[i].id.startsWith('credits') || props.project.beats[i].id.startsWith('title')) continue;
+      await handleAssetAction(i, mode);
+    }
+    setIsGenerating(false);
+  };
+
   const handleLocalRender = async () => {
     if (props.project.beats.length === 0) return;
     const canvas = renderCanvasRef.current;
@@ -150,24 +159,66 @@ const CinemaLab: React.FC<CinemaLabProps> = (props) => {
     try {
       const subs = props.project.subtitleSettings!;
       let width = 1920, height = 1080;
+      if (exportRes === '4K') { width = 3840; height = 2160; }
+      else if (exportRes === '2K') { width = 2560; height = 1440; }
+      if (props.project.aspectRatio === '9:16') { [width, height] = [height, width]; }
+      else if (props.project.aspectRatio === '1:1') { width = height; }
       canvas.width = width; canvas.height = height;
+      const stream = canvas.captureStream(30);
+      const recorder = new MediaRecorder(stream, { mimeType: 'video/webm', videoBitsPerSecond: 40000000 });
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      const finishPromise = new Promise<void>((res) => {
+        recorder.onstop = () => {
+          const blob = new Blob(chunks, { type: 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url; a.download = `Cinema_Master.webm`; a.click(); res();
+        };
+      });
+      recorder.start();
       const ctx = canvas.getContext('2d', { alpha: false });
       if (!ctx) return;
       for (let i = 0; i < props.project.beats.length; i++) {
         const beat = props.project.beats[i];
+        const image = new Image(); image.crossOrigin = "anonymous";
+        if (beat.assetUrl) {
+          await new Promise(r => { image.src = beat.assetUrl!; image.onload = r; image.onerror = r; });
+        }
         const frames = (beat.duration || globalDuration) * 30;
         for (let f = 0; f < frames; f++) {
           const fp = f / frames;
           setRenderProgress(Math.round(((i / props.project.beats.length) + (fp / props.project.beats.length)) * 100));
+          ctx.fillStyle = "black"; ctx.fillRect(0, 0, width, height);
+          if (image.src) {
+            const scale = 1 + (fp * 0.12);
+            const baseScale = Math.max(width / image.width, height / image.height);
+            const finalScale = baseScale * scale;
+            const dW = image.width * finalScale; const dH = image.height * finalScale;
+            ctx.drawImage(image, (width - dW) / 2, (beat.yOffset || 0) * (height / 100), dW, dH);
+          }
+          const scaleFactor = width / 800;
+          const adjFS = Math.max(Math.round(subs.fontSize * scaleFactor), 40);
+          ctx.font = `600 ${adjFS}px ${subs.fontFamily}`; ctx.textAlign = 'center'; ctx.textBaseline = "middle";
+          const wrapped = wrapText(ctx, proHtmlToText(beat.caption), width - (adjFS * subs.marginMult * 2));
+          const lineH = adjFS * 1.4; const bH = (wrapped.length * lineH) + (adjFS * subs.paddingVMult * 2);
+          const bY = height - (height * 0.15) - bH;
+          let maxW = 0; wrapped.forEach(l => { const w = ctx.measureText(l).width; if (w > maxW) maxW = w; });
+          const bW = maxW + (adjFS * subs.paddingHMult * 2); const bX = (width - bW) / 2;
+          ctx.fillStyle = subs.backgroundColor; ctx.globalAlpha = subs.bgOpacity;
+          ctx.beginPath(); ctx.roundRect(bX, bY, bW, bH, Math.round(adjFS * subs.radiusMult)); ctx.fill();
+          ctx.globalAlpha = 1.0; ctx.fillStyle = subs.fontColor;
+          wrapped.forEach((l, idx) => ctx.fillText(l, width/2, bY + (adjFS * subs.paddingVMult) + (idx * lineH) + (adjFS * 0.5)));
           await new Promise(requestAnimationFrame);
         }
       }
+      recorder.stop(); await finishPromise;
     } catch (e) { console.error(e); }
     finally { setIsRendering(false); }
   };
 
   return (
     <div className="h-full flex flex-col bg-[#050505] overflow-hidden min-h-full">
+      <canvas ref={renderCanvasRef} className="fixed -left-[10000px] pointer-events-none" />
       <div className="flex-1 flex flex-col lg:flex-row relative">
         <div className="flex-1 bg-black flex flex-col relative border-r border-white/5 overflow-hidden">
           <CinemaPreview 
@@ -199,7 +250,7 @@ const CinemaLab: React.FC<CinemaLabProps> = (props) => {
           fidelityMode={fidelityMode} setFidelityMode={setFidelityMode} 
           isGenerating={isGenerating} isRendering={isRendering} 
           onAnalyze={handleAnalyzeScript} onRender={handleLocalRender} 
-          onBatch={() => {}} 
+          onBatch={handleBatchGenerate} 
         />
       </div>
 
@@ -233,6 +284,31 @@ const CinemaLab: React.FC<CinemaLabProps> = (props) => {
           }} 
         />
       )}
+
+      <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={(e) => {
+        const file = e.target.files?.[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const res = ev.target?.result as string;
+            const idx = showAssetOrchestrator ?? props.activeBeatIndex;
+            const updated = [...props.project.beats];
+            updated[idx] = { ...updated[idx], assetUrl: res, assetType: 'UPLOAD' };
+            props.setProject(prev => ({ ...prev, beats: updated }));
+            setShowAssetOrchestrator(null);
+          };
+          reader.readAsDataURL(file);
+        }
+      }} />
+
+      <style>{`
+        @keyframes ken-burns { from { transform: scale(1) translateY(var(--tw-translate-y, 0)); } to { transform: scale(1.15) translate(1%, 1%) translateY(var(--tw-translate-y, 0)); } }
+        .animate-ken-burns { animation: ken-burns 15s ease-in-out infinite alternate; }
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #222; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        [contenteditable]:empty:before { content: attr(placeholder); color: #444; }
+      `}</style>
     </div>
   );
 };

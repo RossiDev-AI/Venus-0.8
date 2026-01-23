@@ -1,10 +1,10 @@
 { pkgs, ... }: {
-  # Canal de pacotes estável
-  channel = "stable-23.11";
+  # Canal de pacotes mais atualizado para compatibilidade com Next.js recente
+  channel = "stable-24.11"; 
 
   # Pacotes necessários
   packages = [
-    pkgs.nodejs_20       # Versão compatível com o canal estável
+    pkgs.nodejs_20
     pkgs.nodePackages.npm
   ];
 
@@ -21,19 +21,23 @@
 
     # Configuração do Workspace
     workspace = {
-      # Executa na primeira vez que o projeto é criado
       onCreate = {
         npm-install = "npm install --force";
       };
+      # Garante que o servidor reinicie corretamente se você fechar o IDX
+      #onStart = {
+       # run-dev = "npm run dev";
+      #};
     };
 
-    # Preview do Next.js
+    # Preview do Next.js corrigido
     previews = {
       enable = true;
       previews = {
         web = {
-          # Comando otimizado para o Next.js no IDX
-          command = ["npm" "run" "dev" "--" "--port" "$PORT" "--host" "0.0.0.0"];
+          # Mudança importante: Usamos --hostname em vez de --host
+          # E garantimos que o Next.js escute na porta que o IDX fornece
+          command = ["npm" "run" "dev" "--" "-p" "$PORT" "-H" "0.0.0.0"];
           manager = "web";
         };
       };

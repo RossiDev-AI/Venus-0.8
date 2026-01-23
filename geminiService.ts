@@ -269,7 +269,7 @@ export async function executeGroundedSynth(
       let draftBase64 = "";
       if (draftResponse.candidates?.[0]?.content?.parts) {
           for (const part of draftResponse.candidates[0].content.parts) { 
-              if (part.inlineData) { draftBase64 = part.inlineData.data; }
+              if (part.inlineData && part.inlineData.data) { draftBase64 = part.inlineData.data; }
           }
       }
 
