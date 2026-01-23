@@ -35,9 +35,8 @@
       enable = true;
       previews = {
         web = {
-          # Mudança importante: Usamos --hostname em vez de --host
-          # E garantimos que o Next.js escute na porta que o IDX fornece
-          command = ["npm" "run" "dev" "--" "-p" "$PORT" "-H" "0.0.0.0"];
+          # Comente a linha abaixo para o IDX PARAR de iniciar sozinho
+          # command = ["npm" "run" "dev" "--" "-p" "$PORT" "-H" "0.0.0.0"];
           manager = "web";
         };
       };
